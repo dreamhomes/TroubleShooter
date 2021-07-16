@@ -1,17 +1,17 @@
-# -*- coding: utf-8 -*-
-
+#!/usr/bin/env python3
+# -*- encoding: utf-8 -*-
 """
-@Time        : 2020/9/29
-@Author      : shenmengjia
-@File        : pcalg
-@Description : 
+@date: 2021-07-15 14:14:54
+@author: dreamhomes
+@description : PC algorithm to DAG
 """
-
-import logging
-import networkx as nx
 from itertools import combinations, permutations
 
-_logger = logging.getLogger(__name__)
+import networkx as nx
+import numpy as np
+from gsq.ci_tests import ci_test_bin, ci_test_dis
+from gsq.gsq_testdata import bin_data, dis_data
+from loguru import logger
 
 
 def _create_complete_graph(node_ids):
@@ -58,17 +58,17 @@ def estimate_skeleton(indep_test_func, data_matrix, alpha, **kwargs):
     """
 
     def method_stable(kwargs):
-        return ('method' in kwargs) and kwargs['method'] == "stable"
+        return ("method" in kwargs) and kwargs["method"] == "stable"
 
     node_ids = range(data_matrix.shape[1])
     node_size = data_matrix.shape[1]
     sep_set = [[set() for i in range(node_size)] for j in range(node_size)]
-    if 'init_graph' in kwargs:
-        g = kwargs['init_graph']
+    if "init_graph" in kwargs:
+        g = kwargs["init_graph"]
         if not isinstance(g, nx.Graph):
             raise ValueError
         elif not g.number_of_nodes() == len(node_ids):
-            raise ValueError('init_graph not matching data_matrix shape')
+            raise ValueError("init_graph not matching data_matrix shape")
         for (i, j) in combinations(node_ids, 2):
             if not g.has_edge(i, j):
                 sep_set[i][j] = None
@@ -87,17 +87,16 @@ def estimate_skeleton(indep_test_func, data_matrix, alpha, **kwargs):
             else:
                 adj_i.remove(j)
             if len(adj_i) >= l:
-                _logger.debug('testing %s and %s' % (i, j))
-                _logger.debug('neighbors of %s are %s' % (i, str(adj_i)))
+                logger.debug("testing %s and %s" % (i, j))
+                logger.debug("neighbors of %s are %s" % (i, str(adj_i)))
                 for k in combinations(adj_i, l):
                     print(f"k: {k}")
-                    _logger.debug('indep prob of %s and %s with subset %s'
-                                  % (i, j, str(k)))
+                    logger.debug("indep prob of %s and %s with subset %s" % (i, j, str(k)))
                     p_val = indep_test_func(data_matrix, i, j, set(k), **kwargs)
-                    _logger.debug('p_val is %s' % str(p_val))
+                    logger.debug("p_val is %s" % str(p_val))
                     if p_val > alpha:
                         if g.has_edge(i, j):
-                            _logger.debug('p: remove edge (%s, %s)' % (i, j))
+                            logger.debug("p: remove edge (%s, %s)" % (i, j))
                             if method_stable(kwargs):
                                 remove_edges.append((i, j))
                             else:
@@ -112,7 +111,7 @@ def estimate_skeleton(indep_test_func, data_matrix, alpha, **kwargs):
             g.remove_edges_from(remove_edges)
         if cont is False:
             break
-        if ('max_reach' in kwargs) and (l > kwargs['max_reach']):
+        if ("max_reach" in kwargs) and (l > kwargs["max_reach"]):
             break
 
     return g, sep_set
@@ -146,10 +145,10 @@ def estimate_cpdag(skel_graph, sep_set):
         for k in common_k:
             if k not in sep_set[i][j]:
                 if dag.has_edge(k, i):
-                    _logger.debug('S: remove edge (%s, %s)' % (k, i))
+                    logger.debug("S: remove edge (%s, %s)" % (k, i))
                     dag.remove_edge(k, i)
                 if dag.has_edge(k, j):
-                    _logger.debug('S: remove edge (%s, %s)' % (k, j))
+                    logger.debug("S: remove edge (%s, %s)" % (k, j))
                     dag.remove_edge(k, j)
 
     def _has_both_edges(dag, i, j):
@@ -159,8 +158,11 @@ def estimate_cpdag(skel_graph, sep_set):
         return dag.has_edge(i, j) or dag.has_edge(j, i)
 
     def _has_one_edge(dag, i, j):
-        return ((dag.has_edge(i, j) and (not dag.has_edge(j, i))) or
-                (not dag.has_edge(i, j)) and dag.has_edge(j, i))
+        return (
+            (dag.has_edge(i, j) and (not dag.has_edge(j, i)))
+            or (not dag.has_edge(i, j))
+            and dag.has_edge(j, i)
+        )
 
     def _has_no_edge(dag, i, j):
         return (not dag.has_edge(i, j)) and (not dag.has_edge(j, i))
@@ -184,7 +186,7 @@ def estimate_cpdag(skel_graph, sep_set):
                     if _has_any_edge(dag, k, j):
                         continue
                     # Make i-j into i->j
-                    _logger.debug('R1: remove edge (%s, %s)' % (j, i))
+                    logger.debug("R1: remove edge (%s, %s)" % (j, i))
                     dag.remove_edge(j, i)
                     break
 
@@ -206,7 +208,7 @@ def estimate_cpdag(skel_graph, sep_set):
                 # Check if there is any node k where i->k->j.
                 if len(succs_i & preds_j) > 0:
                     # Make i-j into i->j
-                    _logger.debug('R2: remove edge (%s, %s)' % (j, i))
+                    logger.debug("R2: remove edge (%s, %s)" % (j, i))
                     dag.remove_edge(j, i)
 
             # Rule 3: Orient i-j into i->j whenever there are two chains
@@ -231,7 +233,7 @@ def estimate_cpdag(skel_graph, sep_set):
                     if dag.has_edge(j, l) or (not dag.has_edge(l, j)):
                         continue
                     # Make i-j into i->j.
-                    _logger.debug('R3: remove edge (%s, %s)' % (j, i))
+                    logger.debug("R3: remove edge (%s, %s)" % (j, i))
                     dag.remove_edge(j, i)
                     break
 
@@ -248,46 +250,31 @@ def estimate_cpdag(skel_graph, sep_set):
     return dag
 
 
-if __name__ == '__main__':
-    import networkx as nx
-    import numpy as np
-
-    from gsq.ci_tests import ci_test_bin, ci_test_dis
-    from gsq.gsq_testdata import bin_data, dis_data
-
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.DEBUG)
-    _logger.setLevel(logging.DEBUG)
-    _logger.addHandler(ch)
-
+if __name__ == "__main__":
     dm = np.array(bin_data).reshape((5000, 5))
-    (g, sep_set) = estimate_skeleton(indep_test_func=ci_test_bin,
-                                     data_matrix=dm,
-                                     alpha=0.01)
+    (g, sep_set) = estimate_skeleton(indep_test_func=ci_test_bin, data_matrix=dm, alpha=0.01)
     g = estimate_cpdag(skel_graph=g, sep_set=sep_set)
     g_answer = nx.DiGraph()
     g_answer.add_nodes_from([0, 1, 2, 3, 4])
-    g_answer.add_edges_from([(0, 1), (2, 3), (3, 2), (3, 1),
-                             (2, 4), (4, 2), (4, 1)])
-    print('Edges are:', g.edges(), end='')
+    g_answer.add_edges_from([(0, 1), (2, 3), (3, 2), (3, 1), (2, 4), (4, 2), (4, 1)])
+    print("Edges are:", g.edges(), end="")
     if nx.is_isomorphic(g, g_answer):
-        print(' => GOOD')
+        print(" => GOOD")
     else:
-        print(' => WRONG')
-        print('True edges should be:', g_answer.edges())
+        print(" => WRONG")
+        print("True edges should be:", g_answer.edges())
 
     dm = np.array(dis_data).reshape((10000, 5))
-    (g, sep_set) = estimate_skeleton(indep_test_func=ci_test_dis,
-                                     data_matrix=dm,
-                                     alpha=0.01,
-                                     levels=[3, 2, 3, 4, 2])
+    (g, sep_set) = estimate_skeleton(
+        indep_test_func=ci_test_dis, data_matrix=dm, alpha=0.01, levels=[3, 2, 3, 4, 2]
+    )
     g = estimate_cpdag(skel_graph=g, sep_set=sep_set)
     g_answer = nx.DiGraph()
     g_answer.add_nodes_from([0, 1, 2, 3, 4])
     g_answer.add_edges_from([(0, 2), (1, 2), (1, 3), (4, 3)])
-    print('Edges are:', g.edges(), end='')
+    print("Edges are:", g.edges(), end="")
     if nx.is_isomorphic(g, g_answer):
-        print(' => GOOD')
+        print(" => GOOD")
     else:
-        print(' => WRONG')
-        print('True edges should be:', g_answer.edges())
+        print(" => WRONG")
+        print("True edges should be:", g_answer.edges())
