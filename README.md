@@ -3,7 +3,7 @@ The algorithms about anomaly detection, root cause analysis, casual inference in
 ## Anomaly detection
 
 ### Objects
-- [x] SVDD [(https://dreamhomes.top/posts/202105081146.html)]((https://dreamhomes.top/posts/202105081146.html))
+- [x] SVDD [(https://dreamhomes.top/posts/202105081146.html)](https://dreamhomes.top/posts/202105081146.html)
 - [ ] Deep-SVDD [(https://dreamhomes.top/posts/202104291618.html)](https://dreamhomes.top/posts/202104291618.html)
 
 ### TSeries
