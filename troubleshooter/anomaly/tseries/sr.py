@@ -6,90 +6,198 @@
 @Author      : dreamhomes
 @Description : Time-Series Anomaly Detection Service at Microsoft.
 """
+
+import pandas as pd
 import numpy as np
-from scipy.fftpack import fft, ifft
 
 EPS = 1e-8
+TIMESTAMP = "time"
+IS_ANOMALY = "isAnomaly"
+VALUE = "value"
+ANOMALY_SCORE = "anomalyScore"
+MAP = "map"
 
+class SpectralResidual:
+    def __init__(
+        self, series: pd.DataFrame, score_window: int, mag_window: int = 3, threshold: float = 3.0
+    ):
+        """Spectral Residual algorithm parameters.
 
-class SpectraResidual:
-    def __init__(self, X, slice_window=3, map_window=3, tresh=1):
-        self.slice_window = slice_window
-        self.X = X
-        self.map_window = map_window
-        self.thresh = tresh
-
-    def run(self):
-        Smap = self.get_salience_map(self.X)
-        result = np.array([1 if i > self.thresh else 0 for i in Smap])
-        return result
-
-    def setslicewindow(self, thresh):
-        self.slice_window = thresh
-
-    def plot(self):
-        raise NotImplementedError
-
-    def getSR(self, X):
+        Parameters
+        ----------
+        series : pd.DataFrame
+            input dataframe, columns [timestamp, value]
+        score_window : int
+            anomaly score window.
+        mag_window : int, optional
+            anomaly score window, by default 3
+        threshold : float, optional
+            anomaly threshold, by default 3.0
         """
-        傅里叶变化、残差谱、反傅里叶变换
-        """
-        X = X
+        self._series = series
+        self._threshold = threshold
+        self._mag_window = mag_window
+        self._score_window = score_window
+        self._anomaly_frame = None
 
-        # spectral_residual_transform
-        yy = fft(X)
-        A = yy.real
-        P = yy.imag
-        V = np.sqrt(A ** 2 + P ** 2)
-        eps_index = np.where(V <= EPS)[0]
-        V[eps_index] = EPS
-        L = np.log(V)
-        L[eps_index] = 0
-        residual = np.exp(L - self.average_filter(L, self.map_window))
-        yy.imag = residual * P / V
-        yy.real = residual * A / V
-        yy.imag[eps_index] = 0
-        yy.real[eps_index] = 0
-        result = ifft(yy)
-        S = np.sqrt(result.real ** 2 + result.imag ** 2)
-        # guass filter
-        return S
+    def detect(self):
+        if self._anomaly_frame is None:
+            self._anomaly_frame = self._detect(self._series)
 
-    def get_salience_map(self, X):
-        Map = self.getSR(self.extendseries(X))[: len(X)]
-        ave_mag = average_filter(Map, n=self.slice_window)
-        ave_mag[np.where(ave_mag <= EPS)] = EPS
+        return self._anomaly_frame
 
-        return abs(Map - ave_mag) / ave_mag
+    def _detect(self, series: pd.DataFrame) -> pd.DataFrame:
+        values = series[VALUE].values
+        extended_series = self.extend_series(values)
+        saliency_map = self.spectral_residual_transform(extended_series)
+        anomaly_scores = self.generate_spectral_score(saliency_map)
+        anomaly_frame = pd.DataFrame(
+            {
+                TIMESTAMP: series[TIMESTAMP].values,
+                VALUE: values,
+                MAP: saliency_map[: len(values)],
+                ANOMALY_SCORE: anomaly_scores[: len(values)],
+            }
+        )
+        anomaly_frame[IS_ANOMALY] = np.where(
+            anomaly_frame[ANOMALY_SCORE] > self._threshold, True, False
+        )
 
-    def estimate(self, X):
-        """
-        get k estimated points which is equal to x(n+1)
-        x(n+1)=x(n-m+1)+m*g
-        g=sum(g(x(n),x(n-i)))/m
-        """
-        n = len(X)
-        gradients = [(X[-1] - v) / (n - 1 - i) for i, v in enumerate(X[:-1])]
-        # g=np.sum(gradients)/m
-        return X[1] + np.sum(gradients)
+        return anomaly_frame
 
-    def extend_series(self, X, k=5):
+    def generate_spectral_score(self, mags):
+        ave_mag = self.average_filter(mags, n=self._score_window)
+        safeDivisors = np.clip(ave_mag, EPS, ave_mag.max())
+
+        raw_scores = np.abs(mags - ave_mag) / safeDivisors
+        scores = np.clip(raw_scores, 0, 10)
+
+        return scores
+
+    def spectral_residual_transform(self, values):
         """
-        use k to extend oringe serie;
+        This method transform a time series into spectral residual series
+        :param values: list.
+            a list of float values.
+        :return: mag: list.
+            a list of float values as the spectral residual values
         """
-        X = np.append(X, self.estimate(X[-k - 2 : -1]).repeat(k))
-        return X
+
+        trans = np.fft.fft(values)
+        mag = np.sqrt(trans.real ** 2 + trans.imag ** 2)
+        eps_index = np.where(mag <= EPS)[0]
+        mag[eps_index] = EPS
+
+        mag_log = np.log(mag)
+        mag_log[eps_index] = 0
+
+        spectral = np.exp(mag_log - self.average_filter(mag_log, n=self._mag_window))
+
+        trans.real = trans.real * spectral / mag
+        trans.imag = trans.imag * spectral / mag
+        trans.real[eps_index] = 0
+        trans.imag[eps_index] = 0
+
+        wave_r = np.fft.ifft(trans)
+        mag = np.sqrt(wave_r.real ** 2 + wave_r.imag ** 2)
+        return mag
 
     @staticmethod
-    def average_filter(X, n=3):
-        if n >= len(X):
-            n = len(X)
+    def predict_next(values: np.array) -> float:
+        """Predicts the next value by sum up the slope of the last value with previous values.
 
-        res = np.cumsum(X, dtype=float)
+        Parameters
+        ----------
+        values : np.array
+            previous values.
+
+        Returns
+        -------
+        float
+            predicted value.
+
+        Raises
+        ------
+        ValueError
+            value error.
+        """
+
+        if len(values) <= 1:
+            raise ValueError(f"data should contain at least 2 numbers")
+
+        v_last = values[-1]
+        n = len(values)
+
+        slopes = [(v_last - v) / (n - 1 - i) for i, v in enumerate(values[:-1])]
+
+        return values[1] + sum(slopes)
+
+    def extend_series(self, values: np.array, extend_num=5, look_ahead=5) -> np.array:
+        """extend the array data by the predicted next value
+
+        Parameters
+        ----------
+        values : np.array
+            raw input data
+        extend_num : int, optional
+            number of values added to the tail of data, by default 5
+        look_ahead : int, optional
+            number of previous values used in prediction., by default 5
+
+        Returns
+        -------
+        np.array :
+            filled values.
+
+        Raises
+        ------
+            ValueError
+        """
+
+        if look_ahead < 1:
+            raise ValueError("look_ahead must be at least 1")
+
+        extension = [self.predict_next(values[-look_ahead - 2 : -1])] * extend_num
+        return np.concatenate((values, extension), axis=0)
+
+    @staticmethod
+    def average_filter(values: np.array, n=3) -> np.array:
+        """moving window average
+        res[i] = sum_{j=i-t+1}^{i} values[j] / t, where t = min(n, i+1)
+
+        Parameters
+        ----------
+        values : np.array
+            input data
+        n : int, optional
+            sliding window, by default 3
+
+        Returns
+        -------
+        np.array
+            output data.
+        """
+        if n >= len(values):
+            n = len(values)
+
+        res = np.cumsum(values, dtype=float)
         res[n:] = res[n:] - res[:-n]
         res[n:] = res[n:] / n
 
         for i in range(1, n):
-            res[i] /= (i + 1)
+            res[i] /= i + 1
 
         return res
+
+    @staticmethod
+    def calculate_expected_value(values, anomaly_index):
+        """calculate expected value in time series.
+
+        Parameters
+        ----------
+        values : series
+            np.array
+        anomaly_index : list
+            anomaly index
+        """
+        pass
