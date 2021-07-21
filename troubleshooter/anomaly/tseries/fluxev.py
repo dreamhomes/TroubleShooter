@@ -9,7 +9,7 @@
 
 
 class FluxEV:
-    """Ref https://dl.acm.org/doi/10.1145/3437963.3441823
-    """
+    """Ref https://dreamhomes.top/posts/202103121506.html"""
+
     def __init__(self):
         pass
