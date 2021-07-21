@@ -9,6 +9,7 @@ The algorithms about anomaly detection, root cause analysis, casual inference in
 ### TSeries
 - [x] SPOT [(https://dreamhomes.top/posts/202103091557.html)](https://dreamhomes.top/posts/202103091557.html)
 - [ ] FluxEV [(https://dreamhomes.top/posts/202103121506.html)](https://dreamhomes.top/posts/202103121506.html)
+- [x] SR(Spectral Residual) [(hhttps://dreamhomes.top/posts/202107141714.html)](https://dreamhomes.top/posts/202107141714.html)
 ## Causal graph mining
 - [x] PC algorithm [(https://dreamhomes.top/posts/202006231749.html)](https://dreamhomes.top/posts/202006231749.html)
 - [ ] Graph autoencoder [(https://dreamhomes.top/posts/202107091636.html)](https://dreamhomes.top/posts/202107091636.html)
