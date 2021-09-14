@@ -1,6 +1,6 @@
 # user
 .vscode
-data/
+data/storage.csv
 output/
 
 # Byte-compiled / optimized / DLL files
